@@ -1,0 +1,17 @@
+const int min_tons_for_storage = 20000000; 
+const int workchain = 0;
+int equal_slices (slice a, slice b) asm "SDEQ";
+
+() check_std_addr(slice s) impure asm "REWRITESTDADDR" "DROP2";
+
+() refund(slice address) impure inline {
+    check_std_addr(address);
+    var msg = begin_cell()
+    .store_uint(0x10, 6) 
+    .store_slice(address)
+    .store_coins(0)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+    .end_cell();
+
+    send_raw_message(msg, 128 + 32);
+}

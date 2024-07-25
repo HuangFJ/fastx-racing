@@ -1,0 +1,164 @@
+;;
+;; FastX Racing Contract
+;;
+
+#pragma version >=0.2.0;
+#include "common.func";
+
+
+(int, int, slice, int, int, int) load_data() inline {
+    var ds = get_data().begin_parse();
+    var (round, owner_address) = (ds~load_uint(64), ds~load_msg_addr());
+
+    if (ds.slice_bits() > 0) {
+        return (
+            -1,
+            round,
+            owner_address,
+            ds~load_uint(64),
+            ds~load_uint(32),
+            ds~load_uint(32)
+        );
+    } else {
+        return (
+            0,
+            round,
+            owner_address,
+            null(),
+            null(),
+            null()
+        );
+    }
+}
+
+() store_data(
+    int round, 
+    slice owner_address, 
+    int entry_fee, 
+    int end_time,
+    int dice
+) impure inline {
+    set_data(
+        begin_cell()
+        .store_uint(round, 64)
+        .store_slice(owner_address)
+        .store_uint(entry_fee, 64)
+        .store_uint(end_time, 32)
+        .store_uint(dice, 32)
+        .end_cell()
+    );
+}
+
+() deploy_racer(int tg_id, slice owner_address, slice racer_wallet, int range_from, int range_to, cell racer_code) impure {
+    cell msg_body = begin_cell()
+    .store_slice(owner_address)
+    .store_slice(racer_wallet)
+    .store_uint(range_from, 32)
+    .store_uint(range_to, 32)
+    .end_cell();
+
+    cell data = begin_cell()
+    .store_uint(tg_id, 64)
+    .store_slice(my_address())
+    .end_cell();
+
+    cell state_init =  begin_cell()
+    .store_uint(0, 2)
+    .store_dict(racer_code)
+    .store_dict(data)
+    .store_uint(0, 1)
+    .end_cell();
+
+    slice racer_address = begin_cell()
+    .store_uint(4, 3)
+    .store_int(workchain, 8)
+    .store_uint(cell_hash(state_init), 256)
+    .end_cell()
+    .begin_parse();
+
+    var msg = begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(racer_address)
+    .store_coins(min_tons_for_storage)
+    .store_uint(4 + 2 + 1, 1 + 4 + 4 + 64 + 32 + 1 + 1 + 1)
+    .store_ref(state_init)
+    .store_ref(msg_body);
+
+    send_raw_message(msg.end_cell(), 1); 
+}
+
+(int) generate_dice(int next_racer_range_from) inline {
+    randomize_lt();
+    return rand(next_racer_range_from); 
+}
+
+(slice, int) handle_twin_racer(slice twin_racer, slice owner_address, cell racer_code, int next_racer_range_from) inline {
+    while (twin_racer.slice_bits() > 0) {
+        int racer_tg_id = twin_racer~load_uint(64);
+        slice racer_wallet = twin_racer~load_msg_addr();
+        int racer_range = twin_racer~load_uint(32);
+        int racer_range_from = next_racer_range_from;
+        int racer_range_to = racer_range_from + racer_range;
+        deploy_racer(racer_tg_id, owner_address, racer_wallet, racer_range_from, racer_range_to, racer_code);
+
+        next_racer_range_from = racer_range_to;
+    }
+
+    return (twin_racer, next_racer_range_from);
+}
+
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) { 
+        return ();
+    }
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+    
+    if (flags & 1) { 
+        return ();
+    }
+    slice sender_address = cs~load_msg_addr();
+
+    var (init?, round, owner_address, entry_fee, end_time, dice) = load_data();
+
+    throw_unless(401, equal_slices(sender_address, owner_address));
+
+    if (~ init?) {
+        int next_racer_range_from = 0;
+        
+        entry_fee = in_msg_body~load_uint(64);
+        cell racer_code = in_msg_body~load_ref();
+        int racers_count = in_msg_body~load_uint(4);
+        if (racers_count < 2) | (racers_count > 10) {
+            throw(403);
+        }
+        slice racers = in_msg_body~load_ref().begin_parse();
+        next_racer_range_from = racers~handle_twin_racer(owner_address, racer_code, next_racer_range_from);
+        repeat((racers_count - 2) ^/ 2) {
+            slice racers_ref = racers~load_ref().begin_parse();
+            next_racer_range_from = racers_ref~handle_twin_racer(owner_address, racer_code, next_racer_range_from);
+        }
+        
+        end_time = now();
+        dice = generate_dice(next_racer_range_from);
+
+        store_data(round, owner_address, entry_fee, end_time, dice);
+        return ();
+    }
+
+    int op = in_msg_body~load_uint(32);
+    int query_id = in_msg_body~load_uint(64);
+
+    if (op == 555) {
+        refund(in_msg_body~load_msg_addr());
+        return ();
+    }
+
+    throw(0xffff);
+}
+
+(int, slice, int, int, int) get_racing_data() method_id {
+    var (init?, round, owner_address, entry_fee, end_time, dice) = load_data();
+    return (round, owner_address, entry_fee, end_time, dice);
+}

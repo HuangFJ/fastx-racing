@@ -1,0 +1,35 @@
+"TonUtil.fif" include
+"Color.fif" include
+"Asm.fif" include
+
+"/code/build/racer.fif" constant racer_path
+
+racer_path include constant racer_code
+
+"0QD8-g99_YEIbBnE9nIpm2oAGjt2-Q9LmrZjPUFHHt13O05q" constant racer_wallet
+
+// Parse and save addresses
+racer_wallet $>smca 0= abort"Specify valid racer wallet" drop
+2constant racer_wallet_raw
+
+^reset ."👽 Racer Wallet: "  racer_wallet ^green type cr
+^reset
+
+<b
+  1000 64 u, // entry fee
+  racer_code ref, // racer code
+  3 4 u, // racers count 
+  <b
+    1 64 u, // tg id
+    racer_wallet_raw Addr, // racer address
+    1000 32 u, // racer range
+    2 64 u, // tg id
+    racer_wallet_raw Addr, // racer address
+    1000 32 u, // racer range
+    <b
+      3 64 u, // tg id
+      racer_wallet_raw Addr, // racer address
+      1000 32 u, // racer range
+    b> ref,
+  b> ref, // racers
+b>

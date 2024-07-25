@@ -1,0 +1,8 @@
+racing:
+  data: fift/racing-data.fif
+  func:
+    - func/racing.func
+
+racer:
+  func:
+    - func/racer.func

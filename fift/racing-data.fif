@@ -1,0 +1,20 @@
+"TonUtil.fif" include
+"Color.fif" include
+"Asm.fif" include
+
+// toncli creates file in fift-libs
+// where store deploy wallet address
+// you can use this address to control nft or nft collection
+"OwnerAddr.fif" include
+
+// Parse and save addresses
+owner_address $>smca 0= abort"Specify valid owner addr" drop
+2constant owner_raw
+
+^reset ."👽 Owner Address: "  owner_address ^green type cr
+^reset
+
+<b
+  1 64 u, // round
+  owner_raw Addr, // owner address
+b>
